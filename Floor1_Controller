@@ -31,7 +31,7 @@ int RFIDMode = 1;                                 // variable to change modes
 char key_pressed = 0;                             // variable to store incoming keys
 uint8_t i = 0;                                    // variable used for counter
 
-// defining how many rows and columns our keypad have
+// Defining how many rows and columns our keypad have
 const byte rows = 4;
 const byte columns = 4;
 
@@ -89,7 +89,7 @@ void loop() {
       return;
     }
 
-    //Reading from the card
+    // Reading from the card
     String tag = "";
     for (byte j = 0; j < mfrc522.uid.size; j++)
     {
@@ -98,7 +98,7 @@ void loop() {
     }
     tag.toUpperCase();
 
-    //Checking the card
+    // Checking the card
     if (tag.substring(1) == tagUID)
     {
 
@@ -123,7 +123,7 @@ void loop() {
     }
   }
 
-  // if RFID mode is 0, it will look for keys from keypad
+  // If RFID mode is 0, it will look for keys from keypad
   if (RFIDMode == 0) {
     // LCD prompt to enter password
     lcd.setCursor(0, 0);
@@ -200,7 +200,7 @@ void loop() {
     
     char rkeypadValue = keypad_key2.getKey(); //storing keypad value
 
-    // checking for keys from keypad
+    // Checking for keys from keypad
     if (rkeypadValue != NO_KEY)
     {
 
