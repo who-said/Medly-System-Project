@@ -1,0 +1,215 @@
+//Code compiled by: Usaid AQ and Bolu Julius
+
+/*References: 
+ * https://www.hackster.io/muhammad-aqib/rfid-and-keypad-based-door-lock-using-arduino-89e1d5
+*/
+
+// Include required libraries
+#include <MFRC522.h>           //RFID: https://github.com/miguelbalboa/rfid
+#include <LiquidCrystal_I2C.h> //LCDwI2C: https://github.com/fdebrabander/Arduino-LiquidCrystal-I2C-library
+#include <Keypad.h>            //4x4 Keypad: https://github.com/Chris--A/Keypad
+#include <Servo.h>             //Servo(in-built): https://github.com/arduino-libraries/Servo
+#include <SPI.h>               //SPI(in-built) 
+
+// Create instances
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+MFRC522 mfrc522(10, 9);
+Servo sg90;
+
+// Initialize Pins for servo and LDR
+constexpr uint8_t servoPin = 8;
+constexpr uint8_t LDR = A0;
+
+// Initialize variables
+char rkeypadValue();                              // variable to store keypad input
+int LDRValue = 0;                                 // variable to store LDR sensor data
+int iteminplace = 0;                              // boolean for checking whether item is present
+char initial_password[4] = {'9', '9', '9', '9'};  // variable to store initial password
+String tagUID = "44 50 DD 29";                    // string to store UID of tag. You can find this out using this code:
+char password[4];                                 // variable to store users password
+int RFIDMode = 1;                                 // variable to change modes
+char key_pressed = 0;                             // variable to store incoming keys
+uint8_t i = 0;                                    // variable used for counter
+
+// defining how many rows and columns our keypad have
+const byte rows = 4;
+const byte columns = 4;
+
+// Keypad pin map
+char hexaKeys[rows][columns] = {
+  {'1', '2', '3', 'F'},
+  {'4', '5', '6', 'E'},
+  {'7', '8', '9', 'D'},
+  {'A', '0', 'B', 'C'}
+};
+
+// Initializing pins for keypad
+byte column_pins[rows] = {6, A1, A2, A3};
+byte row_pins[columns] = {5, 4, 3, 2};
+
+// Create instances for keypad
+Keypad keypad_key = Keypad( makeKeymap(hexaKeys), row_pins, column_pins, rows, columns);
+Keypad keypad_key2 = Keypad( makeKeymap(hexaKeys), row_pins, column_pins, rows, columns);
+
+
+void setup() {
+
+  Serial.begin(9600);           // initialize Serial monitor
+
+  // Arduino Pin configuration
+  pinMode(LDR, INPUT);
+  sg90.attach(servoPin);
+
+  sg90.write(5);                 // set initial position at 5 degrees
+  lcd.begin();                   // intialize LCD screen
+  lcd.backlight();
+  SPI.begin();                   // intialize SPI bus
+  mfrc522.PCD_Init();            // intialize MFRC522 RFID scanner
+  lcd.clear();                   // clear LCD screen
+}
+
+
+void loop() {
+
+  // System will first look for mode
+  if (RFIDMode == 1) {
+    //LCD prompt to scan ID
+    lcd.setCursor(0, 0);
+    lcd.print("Drawer Locked");
+    lcd.setCursor(0, 1);
+    lcd.print(" Scan Your Tag ");
+
+    // Look for new cards
+    if ( ! mfrc522.PICC_IsNewCardPresent()) {
+      return;
+    }
+
+    // Select one of the cards
+    if ( ! mfrc522.PICC_ReadCardSerial()) {
+      return;
+    }
+
+    //Reading from the card
+    String tag = "";
+    for (byte j = 0; j < mfrc522.uid.size; j++)
+    {
+      tag.concat(String(mfrc522.uid.uidByte[j] < 0x10 ? " 0" : " "));
+      tag.concat(String(mfrc522.uid.uidByte[j], HEX));
+    }
+    tag.toUpperCase();
+
+    //Checking the card
+    if (tag.substring(1) == tagUID)
+    {
+
+      // If UID of tag is matched.
+      lcd.clear();
+      lcd.print("Tag Matched");
+      delay(3000);
+      lcd.clear();
+      RFIDMode = 0; // Make RFID mode 0
+    }
+    else
+    {
+
+      // If UID of tag is not matched.
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Wrong Tag Shown");
+      lcd.setCursor(0, 1);
+      lcd.print("Access Denied");
+      delay(3000);
+      lcd.clear();
+    }
+  }
+
+  // if RFID mode is 0, it will look for keys from keypad
+  if (RFIDMode == 0) {
+    // LCD prompt to enter password
+    lcd.setCursor(0, 0);
+    lcd.print("Enter Password:");
+    lcd.setCursor(0, 1);
+    key_pressed = keypad_key.getKey(); // storing keypad values
+    if (key_pressed)
+    {
+      password[i++] = key_pressed; // storing in password variable
+      lcd.print(key_pressed);
+    }
+    if (i == 4) // If 4 keys are completed
+    {
+      delay(200);
+      if (!(strncmp(password, initial_password, 4))) // if password is matched
+      {
+        lcd.clear();
+        lcd.print("Pass Accepted");
+        sg90.write(359); // drawer opens
+        delay(3000);
+        lcd.clear();
+        i = 0;
+
+        
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print("Place Item"); // LCD prompt to place item
+        RFIDMode = 9; // make RFID mode 9
+      }
+      else    // if password is not matched
+      {
+        lcd.clear();
+        lcd.print("Wrong Password");
+        delay(3000);
+        lcd.clear();
+        i = 0;
+        RFIDMode = 0;  // make RFID mode 0
+      }
+    }
+  }
+
+  while (RFIDMode == 9) // if ID and password are matched, and the compartment opens, look for item
+  { 
+    LDRValue = analogRead(LDR); // read the value from the sensor
+
+    while (iteminplace == 1 && LDRValue < 800) { //if item is already present from last location
+      lcd.clear();
+      RFIDMode = 2;
+      lcd.print("Remove item"); //LCD prompt to remove item
+      delay(1000);
+
+      lcd.clear();
+      lcd.print("Enter Location:");
+      lcd.setCursor(0, 1);
+      LDRValue = analogRead(LDR);
+    }
+
+
+    if (LDRValue < 800 && iteminplace == 0) { //if there is no item from last location and item is placed
+      iteminplace = 1;
+      lcd.clear();
+      lcd.print("Item placed"); //LCD informs item has been placed
+      delay(3000);
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Enter Location:"); //LCD prompts for location to go to
+      lcd.setCursor(0, 1);
+      RFIDMode = 2;
+    }
+  }
+
+
+  if (RFIDMode == 2) { //if all the processes are over and robot needs to go
+    
+    char rkeypadValue = keypad_key2.getKey(); //storing keypad value
+
+    // checking for keys from keypad
+    if (rkeypadValue != NO_KEY)
+    {
+
+      lcd.print(rkeypadValue); // LCD displays key pressed
+      delay(3000);
+      lcd.clear();
+      sg90.write(0);           // drawer closes
+      Serial.write(rkeypadValue); //location entered is written onto serial monitor from where Arduino 2 will pull to start moving to entered location
+      RFIDMode = 1; //rfid mode is set back to 1
+    }
+  }
+}
